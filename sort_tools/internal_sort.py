@@ -6,8 +6,11 @@ from .const import (
 )
 
 def internal_sort(file_name: str) -> None:
+    """Sort 1GB pieces in file"""
+    f_name, extension = os.path.splitext(file_name)
+    sorted_name = f_name + '_sorted' + extension
     to_read = open(file_name, 'rb')
-    to_write = open(file_name + '_sorted', 'wb')
+    to_write = open(sorted_name, 'wb')
     file_size = os.path.getsize(file_name)
     iterations = math.ceil(file_size / INSIDE_MEMORY)
     remained_size = file_size % INSIDE_MEMORY
