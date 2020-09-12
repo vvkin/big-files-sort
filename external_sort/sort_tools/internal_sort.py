@@ -5,10 +5,11 @@ from .const import (
     INSIDE_MEMORY, NUMBERS_PER_READ, ITEM_NP, ITEM_SIZE
 )
 
-def internal_sort(file_name: str) -> None:
-    """Sort 1GB pieces in file"""
-    f_name, extension = os.path.splitext(file_name)
-    sorted_name = f_name + '_sorted' + extension
+def internal_sort(file_name: str, sorted_name: str) -> None:
+    """
+    Sort pieces in file in file_name file.
+    Write sorted result to sorted_name file.
+    """
     to_read = open(file_name, 'rb')
     to_write = open(sorted_name, 'wb')
     file_size = os.path.getsize(file_name)

@@ -14,5 +14,5 @@ BUFFER_SIZE = 100 * MB
 BUFFER_LENGTH = BUFFER_SIZE // ITEM_SIZE # numbers amount in buffer
 
 # Constants for internal sorting
-INSIDE_MEMORY = 150 * MB
+INSIDE_MEMORY = 500 * MB
 NUMBERS_PER_READ = INSIDE_MEMORY // ITEM_SIZE
