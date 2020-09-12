@@ -10,9 +10,9 @@ ITEM_NP = 'int64' # long long in numpy
 ITEM_SIZE = 8 # long long number size (in bytes)
 
 # Constants for buffers
-BUFFER_SIZE = 500 * MB
+BUFFER_SIZE = 100 * MB
 BUFFER_LENGTH = BUFFER_SIZE // ITEM_SIZE # numbers amount in buffer
 
 # Constants for internal sorting
-INSIDE_MEMORY = 1 * GB
+INSIDE_MEMORY = 150 * MB
 NUMBERS_PER_READ = INSIDE_MEMORY // ITEM_SIZE
