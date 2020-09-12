@@ -25,7 +25,3 @@ def internal_sort(file_name: str) -> None:
         data.tofile(to_write)
     
     to_read.close(); to_write.close()
-
-
-
-
