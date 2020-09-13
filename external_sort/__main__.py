@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import os
 import sys
+import time
 from sort_tools import external_sort
 
 
@@ -10,4 +11,6 @@ if __name__ == '__main__':
     file_name = [arg for arg in sys.argv[1:] if arg != '-i'][0]
     if not os.path.isfile(file_name): # check file existence
         sys.exit(f"Path '{file_name}' does not exist or is inaccessible")
+    start = time.time()
     external_sort(file_name, '-i' in sys.argv[1:]) # with internal if '-i'
+    print(time.time() - start)
