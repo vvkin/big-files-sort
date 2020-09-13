@@ -13,4 +13,4 @@ if __name__ == '__main__':
         sys.exit(f"Path '{file_name}' does not exist or is inaccessible")
     start = time.time()
     external_sort(file_name, '-i' in sys.argv[1:]) # with internal if '-i'
-    print(time.time() - start)
+    print(f'Total: {time.time() - start}')

@@ -1,11 +1,10 @@
 import array
 import math
 import numpy as np
+import struct
 import os
 from .const import (
-    BUFFER_SIZE, BUFFER_LENGTH,
-    ITEM_NP, ITEM_SIZE, ITEM_TYPECODE, 
-    MB
+    ITEM_NP, ITEM_SIZE, ITEM_TYPECODE, MB
 )
 from .internal_sort import internal_sort
 from typing import List, BinaryIO
@@ -18,10 +17,12 @@ class ExternalSort(object):
     Class to sort big numeric binary files
     using natural merge external sort
     """
-    def __init__(self, file_name, sorted_len):
+    def __init__(self, file_name, sorted_len, buffer_size):
         self._file_name = file_name
         self._sorted_len = sorted_len # if internal sorted din't used is equal to 0
         self._available_memory = sorted_len
+        self._buffer_size = buffer_size
+        self._buffer_len = buffer_size // ITEM_SIZE
         self._file_size = self.__get_file_size(file_name)
         self._temp_files = ['b_file', 'c_file']
         self._is_sorted = False
@@ -34,11 +35,12 @@ class ExternalSort(object):
         """
         while not self._is_sorted:
             if self._sorted_len == 0 or self._sorted_len > self._available_memory * 2:
-                print('Unbuffered')
                 self.__split()
+                self.__merge()
             else:
                 self.__buffered_split()
                 self.__buffered_merge()
+        self.__delete_temp_files()
             
     def __buffered_split(self) -> None:
         """
@@ -74,9 +76,9 @@ class ExternalSort(object):
         b_buffer, c_buffer = array.array(ITEM_TYPECODE), array.array(ITEM_TYPECODE)
         
         while(a_file.tell() != self._file_size): # while not eof a_file
-            to_read = min(BUFFER_LENGTH, (self._file_size - a_file.tell()) // ITEM_SIZE) # buffer length or remained size
+            to_read = min(self._buffer_size, self._file_size - a_file.tell()) # buffer length or remained size
             data = array.array(ITEM_TYPECODE)
-            data.fromfile(a_file, to_read)
+            data.fromfile(a_file, to_read // ITEM_SIZE)
             
             for value in data:
                 file_number += (value < last_val)
@@ -84,18 +86,19 @@ class ExternalSort(object):
 
                 if file_number & 1:
                     c_buffer.append(value)
-                    if len(c_buffer) >= BUFFER_LENGTH:
+                    if len(c_buffer) >= self._buffer_len:
                         c_buffer.tofile(c_file)
                         c_buffer = array.array(c_buffer.typecode)
                 else:
                     b_buffer.append(value)
-                    if len(b_buffer) >= BUFFER_LENGTH:
+                    if len(b_buffer) >= self._buffer_len:
                         b_buffer.tofile(b_file)
                         b_buffer = array.array(b_buffer.typecode)
         
         b_buffer.tofile(b_file)
         c_buffer.tofile(c_file)
-
+        self._is_sorted = (file_number < 2) # here are only two series
+        
         self.__close_files(a_file, b_file, c_file)
 
     def __buffered_merge(self) -> None:
@@ -129,14 +132,94 @@ class ExternalSort(object):
         self.__close_files(a_file, b_file, c_file)
 
     def __merge(self) -> None:
-        """Merge temp files and place it in target file"""
-        pass
+        """
+        Merge series in temporary files and
+        write it to target file"""
+
+        sfile = open(self._file_name, "wb")  
+        files = [open(fname, "rb") for fname in self._temp_files]
+        
+        fsizes = [*map(self.__get_file_size, self._temp_files)]
+        masked = [False, False]
+       
+        def buffer_generator(files):
+            for idx, file in enumerate(files):
+                chunk = min(fsizes[idx] // ITEM_SIZE, self._buffer_len)
+                yield np.fromfile(file, ITEM_NP,  chunk)
+        
+        merged_buffer = np.zeros(self._buffer_len, dtype=ITEM_NP)
+        buffers = [buffer for buffer in buffer_generator(files)]
+        idxs, merge_idx = [0, 0], 0
+
+        while True:
+            
+            if masked[0] or masked[1]:
+                midx = 1 if masked[0] else 0
+            
+            else: midx = 0 if buffers[0][idxs[0]]\
+                < buffers[1][idxs[1]] else 1
+            
+            merged_buffer[merge_idx] = buffers[
+                    midx][idxs[midx]]
+            
+            idxs[midx] += 1; merge_idx += 1
+            
+            if merge_idx == self._buffer_len:
+                
+                merged_buffer.tofile(sfile); merge_idx = 0
+                merged_buffer = np.zeros(self._buffer_len, dtype=ITEM_NP)
+            
+            if idxs[midx] == buffers[midx].shape[0]:
+                
+                chunk = min(self._buffer_len, fsizes[midx] -\
+                        files[midx].tell())
+                
+                last = buffers[midx][-1]
+                
+                if not chunk:
+                    
+                    merged_buffer[:merge_idx].tofile(sfile)
+                    
+                    oidx = (midx + 1) % 2
+                    
+                    buffers[oidx][
+                            idxs[oidx]:].tofile(sfile)
+                    
+                    sfile.write(files[oidx].read())
+                    
+                    break
+                
+                buffers[midx] = np.fromfile(
+                    files[midx], ITEM_NP, chunk)
+                
+                if buffers[midx][0] < last:
+                    masked[midx] = True
+                
+                idxs[midx] = 0
+                
+            if idxs[midx] and buffers[midx][idxs[midx]]\
+                < buffers[midx][idxs[midx] - 1]:
+                masked[midx] = True
+                
+            if masked[0] and masked[1]:
+                masked = [False, False] 
+        
+        self.__close_files(sfile, files[0], files[1])
 
     @staticmethod
     def __get_file_size(file_name: str) -> int:
         """Return file size in bytes"""
         return os.path.getsize(file_name)
     
+    @staticmethod
+    def __overwrite_files(f_file: BinaryIO, s_file: BinaryIO) -> None:
+        """Write all data from f_file to s_file with little RAM using"""
+        f_size = os.path.getsize(f_file.name)
+        for _ in range(0, f_size, BUFFER_SIZE):
+            to_read = min(f_size - f_file.tell(), BUFFER_SIZE)
+            to_write = np.fromfile(f_file, ITEM_NP, to_read // ITEM_SIZE)
+            to_write.tofile(s_file)
+
     @staticmethod
     def __close_files(*files: List[BinaryIO]) -> None:
         """Close list of binary files"""
@@ -166,9 +249,12 @@ def external_sort(file_name: str, with_internal: bool) -> None:
     """
     f_name, extension = os.path.splitext(file_name)
     sorted_name = f_name + '_sorted' + extension
-    available_memory = int(psutil.virtual_memory().available * 0.1) # 10% of available RAM
-    sorted_len = available_memory * with_internal # size of sorted pieces in file
+    available_memory = psutil.virtual_memory().available # available RAM
+    sorted_len = int(available_memory * 0.08 * with_internal) # size of sorted pieces in file (8% of available)
     sorted_len -= sorted_len % 8 # int number of bytes
+    buffer_size = int(available_memory * 0.1) # 10% of available RAM
+    buffer_size -= buffer_size % 8 # int number of bytes
+    print(f'Buffer size: {buffer_size // MB} MB')
     if with_internal: # delete old file
         print(f'Chunk size for internal sort: {sorted_len // MB} MB')
         start = time.time()
@@ -177,5 +263,7 @@ def external_sort(file_name: str, with_internal: bool) -> None:
         os.remove(file_name)
     else: # rename file
         os.rename(file_name, sorted_name)
-    ext_sort = ExternalSort(sorted_name, sorted_len)
+    ext_sort = ExternalSort(sorted_name, sorted_len, buffer_size)
+    start = time.time()
     ext_sort() # start sorting
+    print(f'External_sort: {time.time() - start}s')
