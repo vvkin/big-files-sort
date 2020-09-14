@@ -231,14 +231,6 @@ class ExternalSort(object):
         for file_name in self._temp_files:
             os.remove(file_name)
     
-    def __is_sorted(self) -> bool:
-        """Check if sorting is over"""
-        return (
-            self.__get_file_size(self._file_name) == self._file_size and
-            self.__get_file_size(self._temp_files[0]) == 0 and
-            self.__get_file_size(self._temp_files[1]) == 0
-        )
-
 def external_sort(file_name: str, with_internal: bool) -> None:
     """
     Wrapper for ExternalSort functor.
@@ -255,6 +247,7 @@ def external_sort(file_name: str, with_internal: bool) -> None:
     buffer_size = int(available_memory * 0.1) # 10% of available RAM
     buffer_size -= buffer_size % 8 # int number of bytes
     print(f'Buffer size: {buffer_size // MB} MB')
+    
     if with_internal: # delete old file
         print(f'Chunk size for internal sort: {sorted_len // MB} MB')
         start = time.time()
@@ -263,6 +256,7 @@ def external_sort(file_name: str, with_internal: bool) -> None:
         os.remove(file_name)
     else: # rename file
         os.rename(file_name, sorted_name)
+    
     ext_sort = ExternalSort(sorted_name, sorted_len, buffer_size)
     start = time.time()
     ext_sort() # start sorting
